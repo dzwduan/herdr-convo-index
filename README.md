@@ -63,8 +63,9 @@ Toggling splits the focused pane to the right and sizes the index to about 34
 columns; set `CONVO_INDEX_WIDTH` to change that. The pane id is remembered per
 space, so toggling again in the same space closes it. Folding the pane (`z`, or
 the `>>` on the status line — where herdr keeps its own sidebar control) gives
-that width back to the agent pane and leaves a strip showing the turn count over
-a `<<`; unfolding restores whatever width the pane had.
+that width back to the agent pane and leaves herdr's kind of compact rail: the
+turn count, then one size bar per turn, still selectable and still clickable,
+over a `<<`. Unfolding restores whatever width the pane had.
 
 Requirements: herdr >= 0.7.0 with its server running, `python3` on `PATH` (3.8+;
 3.11+ only for the manifest check in the tests), macOS or Linux, and the herdr
@@ -92,7 +93,7 @@ Index pane:
 | `g` / `G` | first / last turn |
 | `/` | filter by prompt text — `enter` keeps the filter, `esc` clears it |
 | `f` | follow the latest turn, or stay put |
-| `z`, click the `>>` on the status line | fold the pane to a narrow strip, or unfold it |
+| `z`, click the `>>` on the status line | fold the pane to a size-bar rail, or unfold it |
 | `q` | close the pane |
 
 Turn popup:

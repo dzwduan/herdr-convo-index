@@ -433,14 +433,20 @@ def check_collapse():
         toggle.narrow = lambda pane_id, cols: widths.append(cols)
         ci.SELF_PANE = "w1:p1"
         ci.handle(("key", "z"), view, None, None)
-        check("z folds the pane to a strip",
+        check("z folds the pane to a rail",
               view.collapsed and widths == [ci.COLLAPSED_COLS], widths)
-        check("the whole strip is the button", view.hits_button(1, 5))
-        ci.handle(("mouse", 0, 1, 5, True), view, None, None)
-        check("clicking it restores the previous width",
+        check("a folded row still addresses its turn", view.row_to_index(5) == 3)
+        ci.handle(("mouse", 0, 1, 10, True), view, None, None)
+        check("clicking the marker restores the previous width",
               not view.collapsed and widths[-1] == 35, widths)
     finally:
         toggle.narrow, ci.SELF_PANE = saved_narrow, saved_self
+
+    entry = {"kind": "turn", "ordinal": 1, "stamp": "10:00", "summary": "x", "weight": 5000}
+    check("a folded row carries the size bar",
+          tx.size_bar(5000) in ci.rail_line(entry, 3, False))
+    check("a folded break is a rule",
+          "─" in ci.rail_line({"kind": "break", "stamp": "10:00", "weight": 0}, 3, False))
 
 
 def check_filtering():

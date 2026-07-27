@@ -1,6 +1,6 @@
 id = "convo.index"
 name = "Conversation Index"
-version = "0.3.1"
+version = "0.4.0"
 min_herdr_version = "0.7.0"
 description = "Turn index for the focused Claude Code or Codex pane, docked as a side pane; click a turn to read it in full."
 platforms = ["macos", "linux"]

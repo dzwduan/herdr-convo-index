@@ -140,8 +140,8 @@ class View:
         return max(1, self.rows - HEADER_ROWS - FOOTER_ROWS)
 
     def hits_button(self, col, row):
-        """The status-line `>>` — or anywhere at all once the pane is a strip."""
-        return self.collapsed or (row == self.rows and col <= tx.cell_width(COLLAPSE_GLYPH))
+        """The fold marker at the near end of the status line, folded or not."""
+        return row == self.rows and col <= tx.cell_width(COLLAPSE_GLYPH)
 
     def apply(self, entries):
         """Recompute the visible rows for the current query."""
@@ -203,6 +203,13 @@ def entry_line(entry, cols, width_no, selected):
     return f"{tui.DIM}{prefix}{tui.RESET}{body}{tail}"
 
 
+def rail_line(entry, cols, selected):
+    """One folded row: the size bar the expanded row would have carried."""
+    glyph = "─" if entry["kind"] == "break" else tx.size_bar(entry["weight"])
+    style = tui.INVERT if selected else tui.DIM
+    return f"{style}{tx.pad(glyph, cols)}{tui.RESET}"
+
+
 def set_collapsed(view, collapsed):
     """Fold the pane down to a chevron strip, or back to the width it had."""
     if collapsed:
@@ -215,15 +222,20 @@ def set_collapsed(view, collapsed):
 def render(term, view, target, index, streaming):
     view.rows, cols = term.measure()
     view.cols = cols
-    if view.collapsed:
-        count = str(index.count if index else 0)
-        term.draw([f"{tui.DIM}{tx.fit(count, cols)}{tui.RESET}"]
-                  + [""] * (view.rows - 2)
-                  + [f"{tui.ACCENT}{tui.BOLD}{tx.fit(EXPAND_GLYPH, cols)}{tui.RESET}"])
-        return
     entries = index.entries if index else []
     shown = view.apply(entries)
     view.clamp()
+
+    if view.collapsed:
+        # Same three-part layout as the expanded pane — header, one row per
+        # entry, status line — so clicks still land on the turn they point at.
+        rail = [f"{tui.DIM}{tx.fit(str(index.count if index else 0), cols)}{tui.RESET}"]
+        for row in range(view.body_rows):
+            i = view.top + row
+            rail.append(rail_line(shown[i], cols, i == view.cursor) if i < len(shown) else "")
+        rail.append(f"{tui.ACCENT}{tui.BOLD}{tx.fit(EXPAND_GLYPH, cols)}{tui.RESET}")
+        term.draw(rail)
+        return
 
     if target:
         head = f"{target['agent']} · {target['title']}" if target["title"] else target["agent"]
