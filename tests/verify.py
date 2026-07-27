@@ -428,9 +428,9 @@ def check_settings():
             "start_collapsed = true\n")
         loaded = settings.load(tmp)
         check("width read from config.toml", loaded["width"] == 22, loaded)
-        check("mode read past the comment", loaded["collapsed_mode"] == "hidden", loaded)
-        check("hidden has nothing to start collapsed into",
-              loaded["start_collapsed"] is False, loaded)
+        check("hidden mode keeps the compact rail", loaded["collapsed_mode"] == "compact", loaded)
+        check("start_collapsed still works with the compact rail",
+              loaded["start_collapsed"] is True, loaded)
 
         (Path(tmp) / "config.toml").write_text('width = 4\ncollapsed_mode = "sideways"\n')
         loaded = settings.load(tmp)
@@ -470,8 +470,8 @@ def check_fold_marker():
               not view.collapsed and widths[-1] == 35, widths)
 
         ci.SETTINGS["collapsed_mode"] = "hidden"
-        check("hidden mode closes the pane instead",
-              ci.handle(("key", "z"), view, None, None) is False and not view.collapsed)
+        check("hidden mode still folds to the minimum",
+              ci.handle(("key", "z"), view, None, None) is True and view.collapsed)
     finally:
         toggle.narrow, ci.SELF_PANE = saved_narrow, saved_self
         ci.SETTINGS["collapsed_mode"] = saved_mode

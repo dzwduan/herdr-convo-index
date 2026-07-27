@@ -68,15 +68,15 @@ reads for its own sidebar:
 
 ```toml
 width           = 34         # like ui.sidebar_width
-collapsed_mode  = "compact"  # like ui.sidebar_collapsed_mode: compact | hidden
+collapsed_mode  = "compact"  # like ui.sidebar_collapsed_mode: compact
 start_collapsed = false      # like ui.sidebar_start_collapsed
 ```
 
-The status line carries a `»` where herdr keeps its own sidebar control, and it
-folds the index the way `collapsed_mode` says. `compact` keeps a rail of turn
-numbers and size bars, still selectable and clickable, with `«` to bring the
-width back. `hidden` closes the pane instead — a plugin's version of zero width
-— and the toggle action reopens it.
+The status line carries a `»` where herdr keeps its own sidebar control. Folding
+always keeps a minimum-width rail of turn numbers and size bars, still
+selectable and clickable, with `«` to bring the width back. The old `hidden`
+setting is treated as `compact` for compatibility; use `q` or the toggle action
+when you actually want to close the pane.
 
 The rail cannot be as narrow as the four columns herdr's own sidebar folds to.
 That sidebar is client chrome: `ui.rs` slices it off the whole frame with

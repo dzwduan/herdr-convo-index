@@ -44,13 +44,10 @@ FOOTER_ROWS = 1
 
 SETTINGS = settings.load()
 
-# herdr collapses its own sidebar two ways (ui.sidebar_collapsed_mode): "compact"
-# keeps a narrow rail of numbers and state dots, "hidden" takes the width to
-# zero. The index does the same — except that "compact" cannot reach herdr's
-# four columns, since a split node is clamped to 10% of its parent
-# (layout.rs: `ratio.clamp(0.1, 0.9)`) while the sidebar is chrome outside the
-# pane grid. "hidden" closes the pane, which is a plugin's version of zero.
-COLLAPSE_GLYPH = "»"  # fold: the pane leaves, to the right
+# A split pane cannot reach herdr's four-column sidebar rail: each split node is
+# clamped to 10% of its parent. Asking for three columns therefore lands on the
+# smallest width herdr allows.
+COLLAPSE_GLYPH = "»"  # fold: the pane shrinks to the right
 EXPAND_GLYPH = "«"  # unfold: the pane comes back, to the left
 COLLAPSED_COLS = 3  # asked for; herdr's floor is what actually lands
 
@@ -212,9 +209,7 @@ def entry_line(entry, cols, width_no, selected, compact=False):
 
 
 def fold(view):
-    """Toggle the fold; False quits, which is how "hidden" reaches zero width."""
-    if SETTINGS["collapsed_mode"] == "hidden":
-        return False
+    """Toggle the fold while keeping the pane at its minimum width."""
     set_collapsed(view, not view.collapsed)
     return True
 

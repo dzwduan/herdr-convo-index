@@ -7,7 +7,7 @@ only: three settings do not justify a dependency, and tomllib would cost
 python 3.8. Environment variables still win, for a one-off override.
 
     width           = 34         # ui.sidebar_width
-    collapsed_mode  = "compact"  # ui.sidebar_collapsed_mode: compact | hidden
+    collapsed_mode  = "compact"  # ui.sidebar_collapsed_mode: compact
     start_collapsed = false      # ui.sidebar_start_collapsed
 """
 
@@ -20,7 +20,7 @@ ENV_KEYS = {
     "collapsed_mode": "CONVO_INDEX_COLLAPSED_MODE",
     "start_collapsed": "CONVO_INDEX_START_COLLAPSED",
 }
-MODES = ("compact", "hidden")
+MODES = ("compact",)
 MIN_WIDTH = 16
 
 
@@ -62,6 +62,4 @@ def load(directory=None):
     out["width"] = max(MIN_WIDTH, out["width"])
     if out["collapsed_mode"] not in MODES:
         out["collapsed_mode"] = DEFAULTS["collapsed_mode"]
-    if out["collapsed_mode"] == "hidden":
-        out["start_collapsed"] = False  # nothing to start collapsed into
     return out
