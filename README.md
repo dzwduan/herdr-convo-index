@@ -16,7 +16,7 @@ one of them — prompt and reply, in full — in a popup.
 │  still on screen)            │  3 11:40 ▂ 这里是我对 pref…    │
 │                              │ ──── compacted 12:20 ────      │
 │                              │  4 12:43 ▇ 这个改动的风险在…   │
-│                              │ 12 turns · follow · / q        │
+│                              │ >> 12 turns · follow · / q     │
 └──────────────────────────────┴────────────────────────────────┘
                                         │ click, or press enter
                                         ▼
@@ -61,11 +61,10 @@ herdr plugin action invoke convo.index.toggle
 
 Toggling splits the focused pane to the right and sizes the index to about 34
 columns; set `CONVO_INDEX_WIDTH` to change that. The pane id is remembered per
-space, so toggling again in the same space closes it. Folding the pane (`z`, or
-the `>>` on the status line — where herdr keeps its own sidebar control) gives
-that width back to the agent pane and leaves herdr's kind of compact rail: the
-turn count, then one size bar per turn, still selectable and still clickable,
-over a `<<`. Unfolding restores whatever width the pane had.
+space, so toggling again in the same space closes it. There is no folded state
+in between: herdr clamps a split at 10% of its parent, so a pane cannot be
+squeezed down to the narrow rail its own sidebar collapses to. The status line
+carries a `>>` where herdr keeps that control, and it closes the pane.
 
 Requirements: herdr >= 0.7.0 with its server running, `python3` on `PATH` (3.8+;
 3.11+ only for the manifest check in the tests), macOS or Linux, and the herdr
@@ -93,8 +92,7 @@ Index pane:
 | `g` / `G` | first / last turn |
 | `/` | filter by prompt text — `enter` keeps the filter, `esc` clears it |
 | `f` | follow the latest turn, or stay put |
-| `z`, click the `>>` on the status line | fold the pane to a size-bar rail, or unfold it |
-| `q` | close the pane |
+| `q`, click the `>>` on the status line | close the pane |
 
 Turn popup:
 
