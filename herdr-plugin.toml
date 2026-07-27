@@ -1,13 +1,15 @@
 id = "convo.index"
 name = "Conversation Index"
-version = "0.6.0"
+version = "0.6.1"
 min_herdr_version = "0.7.0"
 description = "Turn index for the focused Claude Code or Codex pane, docked as a side pane; click a turn to read it in full."
 platforms = ["macos", "linux"]
 
 [[panes]]
 id = "index"
-title = "Conversation Index"
+# herdr paints this on the pane border and rejects an empty one, so it is a
+# single dot rather than a name repeated beside every row of the index.
+title = "·"
 placement = "split"
 command = ["python3", "bin/convo_index.py"]
 
