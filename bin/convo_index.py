@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import herdr_api as api  # noqa: E402
+import settings  # noqa: E402
 import toggle  # noqa: E402  (its resize helper folds this pane)
 import transcript as tx  # noqa: E402
 import tui  # noqa: E402
@@ -41,13 +42,17 @@ WHEEL_LINES = 3
 HEADER_ROWS = 1
 FOOTER_ROWS = 1
 
-# Mirrors herdr's own sidebar control, at the near end of the status line.
-# Folding asks for COLLAPSED_COLS and lands whereever herdr's floor is: a split
-# pane cannot go below 10% of its parent, so the rail is as narrow as the window
-# allows and no narrower.
-COLLAPSE_GLYPH = ">>"
-EXPAND_GLYPH = "<<"
-COLLAPSED_COLS = 3
+SETTINGS = settings.load()
+
+# herdr collapses its own sidebar two ways (ui.sidebar_collapsed_mode): "compact"
+# keeps a narrow rail of numbers and state dots, "hidden" takes the width to
+# zero. The index does the same — except that "compact" cannot reach herdr's
+# four columns, since a split node is clamped to 10% of its parent
+# (layout.rs: `ratio.clamp(0.1, 0.9)`) while the sidebar is chrome outside the
+# pane grid. "hidden" closes the pane, which is a plugin's version of zero.
+COLLAPSE_GLYPH = "»"  # fold: the pane leaves, to the right
+EXPAND_GLYPH = "«"  # unfold: the pane comes back, to the left
+COLLAPSED_COLS = 3  # asked for; herdr's floor is what actually lands
 
 
 def _own_workspace():
@@ -134,8 +139,8 @@ class View:
         self.query = ""
         self.typing = False
         self.rows_shown = []  # entries currently listed, after filtering
-        self.collapsed = False
-        self.expanded_cols = toggle.DESIRED_COLS
+        self.collapsed = SETTINGS["start_collapsed"]
+        self.expanded_cols = SETTINGS["width"]
 
     @property
     def body_rows(self):
@@ -192,17 +197,26 @@ class View:
         return None
 
 
-def entry_line(entry, cols, width_no, selected):
+def entry_line(entry, cols, width_no, selected, compact=False):
     if entry["kind"] == "break":
-        label = f" compacted {entry['stamp']} "
+        label = "─" if compact else f" compacted {entry['stamp']} "
         rule = "─" * max(0, cols - tx.cell_width(label))
         return f"{tui.DIM}{tx.fit(rule[: len(rule) // 2] + label + rule[len(rule) // 2 :], cols)}{tui.RESET}"
-    prefix = f"{str(entry['ordinal']).rjust(width_no)} {entry['stamp']} {tx.size_bar(entry['weight'])} "
-    body = tx.fit(entry["summary"], max(0, cols - tx.cell_width(prefix)))
+    stamp = "" if compact else f"{entry['stamp']} "
+    prefix = f"{str(entry['ordinal']).rjust(width_no)} {stamp}{tx.size_bar(entry['weight'])} "
+    body = "" if compact else tx.fit(entry["summary"], max(0, cols - tx.cell_width(prefix)))
     if selected:
         return f"{tui.INVERT}{tx.pad(prefix + body, cols)}{tui.RESET}"
     tail = " " * max(0, cols - tx.cell_width(prefix + body))
     return f"{tui.DIM}{prefix}{tui.RESET}{body}{tail}"
+
+
+def fold(view):
+    """Toggle the fold; False quits, which is how "hidden" reaches zero width."""
+    if SETTINGS["collapsed_mode"] == "hidden":
+        return False
+    set_collapsed(view, not view.collapsed)
+    return True
 
 
 def set_collapsed(view, collapsed):
@@ -221,7 +235,9 @@ def render(term, view, target, index, streaming):
     shown = view.apply(entries)
     view.clamp()
 
-    if target:
+    if view.collapsed:
+        head = str(index.count if index else 0)  # herdr's collapsed glance: a count
+    elif target:
         head = f"{target['agent']} · {target['title']}" if target["title"] else target["agent"]
     else:
         head = "waiting for a Claude or Codex pane…"
@@ -233,9 +249,7 @@ def render(term, view, target, index, streaming):
         if i >= len(shown):
             lines.append(" " * cols)
             continue
-        # Folded, a row keeps everything but the prompt: ordinal, time, size bar.
-        entry = dict(shown[i], summary="") if view.collapsed else shown[i]
-        lines.append(entry_line(entry, cols, width_no, i == view.cursor))
+        lines.append(entry_line(shown[i], cols, width_no, i == view.cursor, view.collapsed))
 
     if view.typing:
         status = f"/{view.query}▏"
@@ -252,10 +266,12 @@ def render(term, view, target, index, streaming):
         if not streaming:
             state += " · polling"
         status = f"{index.count} turns · {state} · / q"
-    marker = EXPAND_GLYPH if view.collapsed else COLLAPSE_GLYPH
-    status_cols = max(0, cols - tx.cell_width(marker) - 1)
-    lines.append(f"{tui.ACCENT}{marker}{tui.RESET} "
-                 f"{tui.DIM}{tx.pad(tx.fit(status, status_cols), status_cols)}{tui.RESET}")
+    if view.collapsed:  # folded, herdr shows the control and nothing else
+        lines.append(f"{tui.ACCENT}{tx.pad(EXPAND_GLYPH, cols)}{tui.RESET}")
+    else:
+        status_cols = max(0, cols - tx.cell_width(COLLAPSE_GLYPH) - 1)
+        lines.append(f"{tui.ACCENT}{COLLAPSE_GLYPH}{tui.RESET} "
+                     f"{tui.DIM}{tx.pad(tx.fit(status, status_cols), status_cols)}{tui.RESET}")
     term.draw(lines)
 
 
@@ -272,8 +288,8 @@ def handle(event, view, index, target):
     if event[0] == "mouse":
         _, button, col, row, pressed = event
         if button == 0 and pressed and view.hits_button(col, row):
-            set_collapsed(view, not view.collapsed)
-        elif button == tui.WHEEL_UP:
+            return fold(view)
+        if button == tui.WHEEL_UP:
             view.scroll(-WHEEL_LINES)
         elif button == tui.WHEEL_DOWN:
             view.scroll(WHEEL_LINES)
@@ -333,7 +349,7 @@ def handle(event, view, index, target):
     elif key == "f":
         view.follow = not view.follow
     elif key == "z":
-        set_collapsed(view, not view.collapsed)
+        return fold(view)
     return True
 
 

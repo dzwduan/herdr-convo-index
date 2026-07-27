@@ -11,6 +11,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import settings  # noqa: E402
+
 HERDR_BIN = os.environ.get("HERDR_BIN_PATH") or "herdr"
 PLUGIN_ID = os.environ.get("HERDR_PLUGIN_ID") or "convo.index"
 STATE_DIR = Path(
@@ -19,10 +23,7 @@ STATE_DIR = Path(
 )
 STATE_FILE = STATE_DIR / "panes.json"
 
-try:
-    DESIRED_COLS = max(16, int(os.environ.get("CONVO_INDEX_WIDTH", "34")))
-except ValueError:
-    DESIRED_COLS = 34
+DESIRED_COLS = settings.load()["width"]
 
 
 def herdr(*args):

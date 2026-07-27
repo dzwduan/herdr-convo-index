@@ -26,6 +26,7 @@ import transcript as tx  # noqa: E402
 import tui  # noqa: E402
 import convo_index as ci  # noqa: E402
 import turn_view as tv  # noqa: E402
+import settings  # noqa: E402
 import toggle  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixture.jsonl"
@@ -419,19 +420,47 @@ def check_click_mapping():
     check("wheel clamps at the end", view.top == 40 - view.body_rows, view.top)
 
 
+def check_settings():
+    print("settings")
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "config.toml").write_text(
+            '# comment\nwidth = 22\ncollapsed_mode = "hidden"  # trailing\n'
+            "start_collapsed = true\n")
+        loaded = settings.load(tmp)
+        check("width read from config.toml", loaded["width"] == 22, loaded)
+        check("mode read past the comment", loaded["collapsed_mode"] == "hidden", loaded)
+        check("hidden has nothing to start collapsed into",
+              loaded["start_collapsed"] is False, loaded)
+
+        (Path(tmp) / "config.toml").write_text('width = 4\ncollapsed_mode = "sideways"\n')
+        loaded = settings.load(tmp)
+        check("width has a floor", loaded["width"] == settings.MIN_WIDTH, loaded)
+        check("an unknown mode falls back",
+              loaded["collapsed_mode"] == "compact", loaded)
+
+        os.environ["CONVO_INDEX_WIDTH"] = "40"
+        try:
+            check("environment overrides the file", settings.load(tmp)["width"] == 40)
+        finally:
+            os.environ.pop("CONVO_INDEX_WIDTH")
+    check("no config dir is not an error", settings.load("/nonexistent") == settings.DEFAULTS)
+
+
 def check_fold_marker():
     print("fold marker")
     view = ci.View()
     view.rows, view.cols = 10, 34
-    check("the status-line marker hits it", view.hits_button(2, 10))
+    check("the status-line marker hits it", view.hits_button(1, 10))
     check("the status text does not", not view.hits_button(4, 10))
     check("the same column in the body does not", not view.hits_button(2, 5))
 
     widths = []
     saved_narrow, saved_self = toggle.narrow, ci.SELF_PANE
+    saved_mode = ci.SETTINGS["collapsed_mode"]
     try:
         toggle.narrow = lambda pane_id, cols: widths.append(cols)
         ci.SELF_PANE = "w1:p1"
+        ci.SETTINGS["collapsed_mode"] = "compact"
         ci.handle(("mouse", 0, 1, 10, True), view, None, None)
         check("clicking the marker folds the pane",
               view.collapsed and widths == [ci.COLLAPSED_COLS], widths)
@@ -439,8 +468,13 @@ def check_fold_marker():
         ci.handle(("key", "z"), view, None, None)
         check("z unfolds to the width it had",
               not view.collapsed and widths[-1] == 35, widths)
+
+        ci.SETTINGS["collapsed_mode"] = "hidden"
+        check("hidden mode closes the pane instead",
+              ci.handle(("key", "z"), view, None, None) is False and not view.collapsed)
     finally:
         toggle.narrow, ci.SELF_PANE = saved_narrow, saved_self
+        ci.SETTINGS["collapsed_mode"] = saved_mode
 
 
 def check_filtering():
@@ -629,7 +663,7 @@ def main():
                  check_size_bar, check_tailing, check_codex_tailing, check_load_turn,
                  check_focus_scoping, check_session_path,
                  check_text_metrics, check_input_parsing, check_click_mapping,
-                 check_fold_marker, check_filtering, check_typing_mode, check_turn_rendering,
+                 check_settings, check_fold_marker, check_filtering, check_typing_mode, check_turn_rendering,
                  check_markdown, check_socket_client, check_state_dir):
         step()
     print()

@@ -16,7 +16,7 @@ one of them — prompt and reply, in full — in a popup.
 │  still on screen)            │  3 11:40 ▂ 这里是我对 pref…    │
 │                              │ ──── compacted 12:20 ────      │
 │                              │  4 12:43 ▇ 这个改动的风险在…   │
-│                              │ >> 12 turns · follow · / q     │
+│                              │ » 12 turns · follow · / q      │
 └──────────────────────────────┴────────────────────────────────┘
                                         │ click, or press enter
                                         ▼
@@ -59,14 +59,30 @@ action runs from a shell:
 herdr plugin action invoke convo.index.toggle
 ```
 
-Toggling splits the focused pane to the right and sizes the index to about 34
-columns; set `CONVO_INDEX_WIDTH` to change that. The pane id is remembered per
-space, so toggling again in the same space closes it. The status line carries a
-`>>` where herdr keeps its own sidebar control; it folds the index to a rail of
-ordinals, times and size bars — everything but the prompt text — and `<<` brings
-the width back. herdr clamps a split at 10% of its parent, so that rail is as
-narrow as the window allows and no narrower: it cannot reach the few columns
-herdr's own sidebar folds to, since that sidebar is client chrome, not a pane.
+Toggling splits the focused pane to the right and sizes the index; the pane id is
+remembered per space, so toggling again in the same space closes it.
+
+Settings live in `config.toml` inside the directory herdr gives the plugin
+(`herdr plugin config-dir convo.index`), and mirror the `ui.sidebar_*` keys herdr
+reads for its own sidebar:
+
+```toml
+width           = 34         # like ui.sidebar_width
+collapsed_mode  = "compact"  # like ui.sidebar_collapsed_mode: compact | hidden
+start_collapsed = false      # like ui.sidebar_start_collapsed
+```
+
+The status line carries a `»` where herdr keeps its own sidebar control, and it
+folds the index the way `collapsed_mode` says. `compact` keeps a rail of turn
+numbers and size bars, still selectable and clickable, with `«` to bring the
+width back. `hidden` closes the pane instead — a plugin's version of zero width
+— and the toggle action reopens it.
+
+The rail cannot be as narrow as the four columns herdr's own sidebar folds to.
+That sidebar is client chrome: `ui.rs` slices it off the whole frame with
+`Constraint::Length(COLLAPSED_WIDTH)` before the pane grid exists. A plugin pane
+is a node in that grid, and every split there is clamped by
+`ratio.clamp(0.1, 0.9)` in `layout.rs` — never below a tenth of its parent.
 
 Requirements: herdr >= 0.7.0 with its server running, `python3` on `PATH` (3.8+;
 3.11+ only for the manifest check in the tests), macOS or Linux, and the herdr
@@ -94,7 +110,7 @@ Index pane:
 | `g` / `G` | first / last turn |
 | `/` | filter by prompt text — `enter` keeps the filter, `esc` clears it |
 | `f` | follow the latest turn, or stay put |
-| `z`, click the `>>` / `<<` on the status line | fold the pane to a rail, or unfold it |
+| `z`, click the `»` / `«` on the status line | fold the pane, or unfold it |
 | `q` | close the pane |
 
 Turn popup:
@@ -187,7 +203,8 @@ manifest, turn extraction, incremental tailing, full-turn loading, focus
 scoping, session-file resolution, text metrics, input parsing, click mapping,
 filtering, and markdown rendering.
 
-Layout: `bin/transcript.py` parses the JSONL and measures text, `bin/tui.py` is
+Layout: `bin/settings.py` reads the plugin config, `bin/transcript.py` parses
+the JSONL and measures text, `bin/tui.py` is
 the terminal and input layer, `bin/herdr_api.py` speaks the socket protocol,
 `bin/markdown.py` renders markdown to ANSI, `bin/convo_index.py` is the index
 pane, `bin/turn_view.py` is the popup, and `bin/toggle.py` is the action.
