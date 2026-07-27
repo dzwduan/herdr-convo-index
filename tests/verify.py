@@ -423,9 +423,9 @@ def check_collapse():
     print("collapse button")
     view = ci.View()
     view.rows, view.cols = 10, 34
-    check("header chevron hits the button", view.hits_button(34, 1))
-    check("the title does not", not view.hits_button(4, 1))
-    check("a body row does not", not view.hits_button(34, 5))
+    check("the status-line marker hits the button", view.hits_button(2, 10))
+    check("the status text does not", not view.hits_button(4, 10))
+    check("the same column in the body does not", not view.hits_button(2, 5))
 
     widths = []
     saved_narrow, saved_self = toggle.narrow, ci.SELF_PANE

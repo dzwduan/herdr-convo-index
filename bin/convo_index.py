@@ -41,8 +41,10 @@ WHEEL_LINES = 3
 HEADER_ROWS = 1
 FOOTER_ROWS = 1
 
-COLLAPSE_GLYPH = "›"  # header button: click to collapse
-EXPAND_GLYPH = "‹"  # the collapsed strip itself: click to expand
+# Mirrors herdr's own sidebar control, which sits at the far end of its status
+# line and points the way the pane folds.
+COLLAPSE_GLYPH = ">>"  # status-line button: click to fold
+EXPAND_GLYPH = "<<"  # bottom of the folded strip: click to unfold
 COLLAPSED_COLS = 4
 
 
@@ -138,8 +140,8 @@ class View:
         return max(1, self.rows - HEADER_ROWS - FOOTER_ROWS)
 
     def hits_button(self, col, row):
-        """The header chevron — or anywhere at all once the pane is a strip."""
-        return self.collapsed or (row == 1 and col >= self.cols)
+        """The status-line `>>` — or anywhere at all once the pane is a strip."""
+        return self.collapsed or (row == self.rows and col <= tx.cell_width(COLLAPSE_GLYPH))
 
     def apply(self, entries):
         """Recompute the visible rows for the current query."""
@@ -214,9 +216,10 @@ def render(term, view, target, index, streaming):
     view.rows, cols = term.measure()
     view.cols = cols
     if view.collapsed:
-        strip = f"{EXPAND_GLYPH}{index.count if index else 0}"
-        term.draw([f"{tui.ACCENT}{tui.BOLD}{tx.fit(strip, cols)}{tui.RESET}"]
-                  + [""] * (view.rows - 1))
+        count = str(index.count if index else 0)
+        term.draw([f"{tui.DIM}{tx.fit(count, cols)}{tui.RESET}"]
+                  + [""] * (view.rows - 2)
+                  + [f"{tui.ACCENT}{tui.BOLD}{tx.fit(EXPAND_GLYPH, cols)}{tui.RESET}"])
         return
     entries = index.entries if index else []
     shown = view.apply(entries)
@@ -226,11 +229,7 @@ def render(term, view, target, index, streaming):
         head = f"{target['agent']} · {target['title']}" if target["title"] else target["agent"]
     else:
         head = "waiting for a Claude or Codex pane…"
-    head_cols = max(0, cols - tx.cell_width(COLLAPSE_GLYPH))
-    lines = [
-        f"{tui.ACCENT}{tui.BOLD}{tx.pad(tx.fit(head, head_cols), head_cols)}"
-        f"{COLLAPSE_GLYPH}{tui.RESET}"
-    ]
+    lines = [f"{tui.ACCENT}{tui.BOLD}{tx.pad(tx.fit(head, cols), cols)}{tui.RESET}"]
 
     width_no = len(str(max(1, index.count if index else 1)))
     for row in range(view.body_rows):
@@ -255,7 +254,9 @@ def render(term, view, target, index, streaming):
         if not streaming:
             state += " · polling"
         status = f"{index.count} turns · {state} · / q"
-    lines.append(f"{tui.DIM}{tx.pad(tx.fit(status, cols), cols)}{tui.RESET}")
+    status_cols = max(0, cols - tx.cell_width(COLLAPSE_GLYPH) - 1)
+    lines.append(f"{tui.ACCENT}{COLLAPSE_GLYPH}{tui.RESET} "
+                 f"{tui.DIM}{tx.pad(tx.fit(status, status_cols), status_cols)}{tui.RESET}")
     term.draw(lines)
 
 
