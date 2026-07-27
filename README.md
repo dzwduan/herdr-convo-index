@@ -1,6 +1,7 @@
 # herdr conversation index
 
-A [herdr](https://herdr.dev) plugin that keeps a Claude Code session navigable.
+A [herdr](https://herdr.dev) plugin that keeps a Claude Code or Codex session
+navigable.
 
 A long agent session scrolls its own history away: the pane shows the current
 turn, and everything before it is somewhere up in the scrollback. This plugin
@@ -9,7 +10,7 @@ one of them — prompt and reply, in full — in a popup.
 
 ```
 ┌──────────────────────────────┬────────────────────────────────┐
-│ claude                       │ claude · 讲解 L2 prefetch…     │
+│ codex                        │ codex · 讲解 L2 prefetch…      │
 │                              │  1 11:13 ▃ 讲解 L2 prefetch…   │
 │ (only the current turn is    │  2 11:36 ▆ 我理解是先 prefe…   │
 │  still on screen)            │  3 11:40 ▂ 这里是我对 pref…    │
@@ -63,8 +64,17 @@ columns; set `CONVO_INDEX_WIDTH` to change that. The pane id is remembered per
 space, so toggling again in the same space closes it.
 
 Requirements: herdr >= 0.7.0 with its server running, `python3` on `PATH` (3.8+;
-3.11+ only for the manifest check in the tests), Claude Code writing transcripts
-under `~/.claude/projects/`, macOS or Linux. No third-party Python packages.
+3.11+ only for the manifest check in the tests), macOS or Linux, and the herdr
+integration for the agent you use:
+
+```sh
+herdr integration install claude  # for Claude Code
+herdr integration install codex   # for Codex
+```
+
+Claude Code transcripts are read from `~/.claude/projects/`. Codex transcripts
+are read from `$CODEX_HOME/sessions/`, which defaults to `~/.codex/sessions/`.
+No third-party Python packages are needed.
 
 ## Using it
 
@@ -99,9 +109,15 @@ not consume turn numbers, so ordinals stay stable across them.
 
 ## How it works
 
-`pane.list` reports each pane's Claude session id and working directory. Claude
-Code writes every turn to `~/.claude/projects/<cwd-slug>/<session-id>.jsonl`.
-The index joins the two and tails that file incrementally.
+`pane.list` reports each pane's agent, session id and working directory. Claude
+Code writes turns to `~/.claude/projects/<cwd-slug>/<session-id>.jsonl`; Codex
+writes them below `$CODEX_HOME/sessions/YYYY/MM/DD/` in `rollout-*.jsonl` files.
+The index resolves the session id against the appropriate store and tails that
+file incrementally.
+
+Codex writes both UI events and lower-level response items. The index consumes
+the UI events, so injected context and the duplicate response-item copy of each
+prompt or reply never become extra turns.
 
 Focus is tracked over a persistent `events.subscribe` connection to the herdr
 socket (`pane.focused`, `pane.agent_detected`, `pane.closed`), so retargeting is
@@ -128,9 +144,10 @@ punctuation never opens a line.
 - **Tool calls are not shown** — names, inputs and results alike. A list of tool
   names says nothing once the reply itself is in front of you. A turn that was
   only tool calls therefore shows just its prompt.
-- **Noise is filtered out of the index**: tool results, subagent (`isSidechain`)
-  turns, slash commands and their output, task notifications, injected system
-  reminders, interrupt markers. Compaction notices are kept, as rules.
+- **Noise is filtered out of the index**: tool results, Claude sidechains, Codex
+  subagent activity, slash commands and their output, task notifications,
+  injected system reminders, interrupt markers. Compaction notices are kept, as
+  rules.
 - **The size bar is an order-of-magnitude hint**, not a measurement. A turn that
   did heavy tool work and said little scores low.
 - **Markdown support is partial**: source line breaks are kept rather than
@@ -139,8 +156,8 @@ punctuation never opens a line.
   modelled, and thinking blocks stay plain prose. Table columns shrink
   proportionally and cells wrap inside their column, so no cell text is lost.
 - **`/` filters prompts only**, not reply bodies.
-- **Only Claude panes are indexed** — panes herdr has detected with a session id.
-  Other agents report sessions differently and are skipped.
+- **Only Claude Code and Codex panes are indexed** — and only after herdr has
+  detected a session id. Other agents are skipped.
 - **The index cannot run as a popup.** Popups receive no `HERDR_PANE_ID`, so it
   could not exclude itself when working out which pane has focus.
 - **Mouse support depends on herdr forwarding mouse events.** The plugin requests
@@ -158,11 +175,11 @@ herdr plugin link ./herdr-convo-index
 python3 tests/verify.py    # exit 0 = all checks passed
 ```
 
-The checks run against `tests/fixture.jsonl` and stubbed socket responses — no
-herdr server and no real transcript needed. They cover the manifest, turn
-extraction, incremental tailing, full-turn loading, focus scoping, session-file
-resolution, text metrics, input parsing, click mapping, filtering, and markdown
-rendering.
+The checks run against Claude and Codex fixture transcripts plus stubbed socket
+responses — no herdr server and no real transcript needed. They cover the
+manifest, turn extraction, incremental tailing, full-turn loading, focus
+scoping, session-file resolution, text metrics, input parsing, click mapping,
+filtering, and markdown rendering.
 
 Layout: `bin/transcript.py` parses the JSONL and measures text, `bin/tui.py` is
 the terminal and input layer, `bin/herdr_api.py` speaks the socket protocol,

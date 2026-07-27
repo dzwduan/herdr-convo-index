@@ -1,0 +1,15 @@
+{"timestamp":"2026-07-27T08:00:00.000Z","type":"session_meta","payload":{"id":"019fa0f0-0000-7000-8000-000000000001","cwd":"/home/dev/demo","originator":"codex-tui","cli_version":"0.145.0"}}
+{"timestamp":"2026-07-27T08:00:00.100Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"injected developer instructions"}]}}
+{"timestamp":"2026-07-27T08:00:00.200Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>injected context</environment_context>"}]}}
+{"timestamp":"2026-07-27T08:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"first Codex question"}]}}
+{"timestamp":"2026-07-27T08:00:01.001Z","type":"event_msg","payload":{"type":"user_message","message":"first Codex question","images":[],"local_images":[]}}
+{"timestamp":"2026-07-27T08:00:02.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"checking the code"}],"phase":"commentary"}}
+{"timestamp":"2026-07-27T08:00:02.001Z","type":"event_msg","payload":{"type":"agent_message","message":"checking the code","phase":"commentary"}}
+{"timestamp":"2026-07-27T08:00:03.000Z","type":"response_item","payload":{"type":"custom_tool_call","name":"exec_command","input":"{}"}}
+{"timestamp":"2026-07-27T08:00:04.000Z","type":"event_msg","payload":{"type":"agent_message","message":"first answer","phase":"final_answer"}}
+{"timestamp":"2026-07-27T08:01:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"second Codex question\nwith detail","images":[],"local_images":[]}}
+{"timestamp":"2026-07-27T08:01:01.000Z","type":"event_msg","payload":{"type":"agent_message","message":"second answer","phase":"commentary"}}
+{"timestamp":"2026-07-27T08:01:02.000Z","type":"event_msg","payload":{"type":"context_compacted"}}
+{"timestamp":"2026-07-27T08:01:03.000Z","type":"event_msg","payload":{"type":"agent_message","message":"continued after compaction","phase":"final_answer"}}
+{"timestamp":"2026-07-27T08:02:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"third Codex question","images":[],"local_images":[]}}
+{"timestamp":"2026-07-27T08:02:01.000Z","type":"event_msg","payload":{"type":"agent_message","message":"third answer","phase":"final_answer"}}

@@ -2,10 +2,10 @@
 """Self-contained checks for the conversation index plugin.
 
 Run: python3 tests/verify.py   (exit 0 = all checks passed)
-Covers manifest validity, turn extraction against a fixture transcript,
+Covers manifest validity, Claude and Codex turn extraction against fixtures,
 incremental tailing, full-turn loading, focus scoping, session-file resolution,
 text metrics, input parsing, click-row mapping, and markdown rendering.
-No herdr server and no real Claude transcripts are required.
+No herdr server or real agent transcripts are required.
 """
 
 import json
@@ -26,6 +26,7 @@ import convo_index as ci  # noqa: E402
 import turn_view as tv  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixture.jsonl"
+CODEX_FIXTURE = ROOT / "tests" / "codex_fixture.jsonl"
 MANIFEST_PLACEMENTS = ("overlay", "split", "tab", "zoomed")
 FAILURES = []
 
@@ -122,6 +123,51 @@ def check_extraction():
           [e["weight"] for e in index.turns])
 
 
+def check_codex_extraction():
+    print("Codex turn extraction")
+    index = tx.SessionIndex(CODEX_FIXTURE)
+    changed = index.refresh()
+    summaries = [e["summary"] for e in index.turns]
+    check("first refresh reports change", changed)
+    check(
+        "keeps event messages without response-item duplicates",
+        summaries
+        == [
+            "first Codex question",
+            "second Codex question",
+            "third Codex question",
+        ],
+        summaries,
+    )
+    check("ignores injected developer and environment messages",
+          all("injected" not in summary for summary in summaries), summaries)
+    check("ordinals are dense", [e["ordinal"] for e in index.turns] == [1, 2, 3])
+    breaks = [e for e in index.entries if e["kind"] == "break"]
+    check("Codex compaction rendered once", len(breaks) == 1, index.entries)
+    check("compaction sits between the second and third turns",
+          [e["kind"] for e in index.entries] == ["turn", "turn", "break", "turn"],
+          [e["kind"] for e in index.entries])
+    expected_weight = len("second answer") + len("continued after compaction")
+    check("reply stays attached across mid-turn compaction",
+          index.turns[1]["weight"] == expected_weight,
+          index.turns[1]["weight"])
+
+    first = tx.load_turn(CODEX_FIXTURE, 1)
+    check("full Codex prompt loads", first["text"] == "first Codex question", first)
+    check("commentary and final answer load once",
+          first["blocks"] == [("text", "checking the code"), ("text", "first answer")],
+          first["blocks"])
+    second = tx.load_turn(CODEX_FIXTURE, 2)
+    check("multiline Codex prompt stays intact",
+          second["text"] == "second Codex question\nwith detail", second["text"])
+    check("full reply crosses compaction",
+          second["blocks"] == [
+              ("text", "second answer"),
+              ("text", "continued after compaction"),
+          ],
+          second["blocks"])
+
+
 def check_size_bar():
     print("size bar")
     check("empty reply is the lowest bar", tx.size_bar(0) == tx.SIZE_BARS[0])
@@ -174,6 +220,38 @@ def check_tailing():
               index.entries == [] and index.offset == 0 and index.count == 0)
 
 
+def check_codex_tailing():
+    print("Codex incremental tailing")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "rollout-session-id.jsonl"
+        path.write_text(json.dumps({
+            "type": "event_msg",
+            "timestamp": "2026-07-27T00:00:00.000Z",
+            "payload": {"type": "user_message", "message": "first"},
+        }) + "\n")
+        index = tx.SessionIndex(path)
+        index.refresh()
+        check("initial Codex turn", [e["summary"] for e in index.turns] == ["first"])
+
+        with path.open("a") as handle:
+            handle.write('{"type":"event_msg","timestamp":"2026-07-27T00:01:00.000Z",')
+        index.refresh()
+        check("partial Codex record waits", len(index.turns) == 1)
+
+        with path.open("a") as handle:
+            handle.write('"payload":{"type":"user_message","message":"second"}}\n')
+            handle.write(json.dumps({
+                "type": "event_msg",
+                "timestamp": "2026-07-27T00:01:01.000Z",
+                "payload": {"type": "agent_message", "message": "answer"},
+            }) + "\n")
+        changed = index.refresh()
+        check("completed Codex records picked up", changed)
+        check("new Codex turn indexed",
+              [e["summary"] for e in index.turns] == ["first", "second"])
+        check("Codex reply grows the open turn", index.turns[-1]["weight"] == len("answer"))
+
+
 def check_load_turn():
     print("full turn loading")
     first = tx.load_turn(FIXTURE, 1)
@@ -219,6 +297,8 @@ def check_focus_scoping():
             {"pane_id": "w2:p1", "focused": False, "workspace_id": "w2", "agent": "claude",
              "cwd": "/y", "agent_session": {"kind": "id", "value": "S2"}},
             {"pane_id": "w3:p2", "focused": False, "workspace_id": "w3", "agent": "shell"},
+            {"pane_id": "w3:p3", "focused": False, "workspace_id": "w3", "agent": "codex",
+             "cwd": "/z", "agent_session": {"kind": "id", "value": "C3"}},
         ]
     }
 
@@ -233,6 +313,10 @@ def check_focus_scoping():
         focus("w3:p1")
         check("follows claude pane in own space",
               (ci.focused_agent_pane() or {}).get("session_id") == "S3")
+        focus("w3:p3")
+        codex = ci.focused_agent_pane() or {}
+        check("follows Codex pane in own space",
+              codex.get("session_id") == "C3" and codex.get("agent") == "codex", codex)
         focus("w2:p1")
         check("ignores other space", ci.focused_agent_pane() is None)
         focus("w3:p9")
@@ -258,6 +342,21 @@ def check_session_path():
               tx.session_path("abc-123", "/unrelated/path", root) == slug / "abc-123.jsonl")
         check("unknown session",
               tx.session_path("nope", "/home/dev/demo/project", root) is None)
+
+        codex_root = root / "codex-sessions"
+        day = codex_root / "2026" / "07" / "27"
+        day.mkdir(parents=True)
+        codex_file = day / "rollout-2026-07-27T08-00-00-codex-123.jsonl"
+        codex_file.write_text("")
+        check("Codex nested session resolved by id",
+              tx.session_path("codex-123", "/unrelated", codex_root, agent="codex")
+              == codex_file)
+        check("unknown Codex session",
+              tx.session_path("nope", "/unrelated", codex_root, agent="codex") is None)
+        check("path-valued session used directly",
+              tx.session_path(str(codex_file), "", root, agent="codex") == codex_file)
+        check("unsupported agent is rejected",
+              tx.session_path("codex-123", "", codex_root, agent="other") is None)
 
 
 def check_text_metrics():
@@ -484,8 +583,9 @@ def check_socket_client():
 
 
 def main():
-    for step in (check_manifest, check_popup_launch, check_extraction, check_size_bar, check_tailing,
-                 check_load_turn, check_focus_scoping, check_session_path,
+    for step in (check_manifest, check_popup_launch, check_extraction, check_codex_extraction,
+                 check_size_bar, check_tailing, check_codex_tailing, check_load_turn,
+                 check_focus_scoping, check_session_path,
                  check_text_metrics, check_input_parsing, check_click_mapping,
                  check_filtering, check_typing_mode, check_turn_rendering,
                  check_markdown, check_socket_client):

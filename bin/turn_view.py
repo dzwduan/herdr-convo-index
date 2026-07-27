@@ -2,9 +2,9 @@
 """Modal popup that shows one conversation turn in full.
 
 The index pane spawns this with CONVO_TURN_FILE / CONVO_TURN_INDEX pointing at a
-Claude Code transcript and a 1-based turn ordinal. Reading the transcript rather
-than the pane scrollback is what makes arbitrarily old turns reachable: herdr's
-pane.read caps out around 1000 lines.
+Claude Code or Codex transcript and a 1-based turn ordinal. Reading the
+transcript rather than the pane scrollback is what makes arbitrarily old turns
+reachable: herdr's pane.read caps out around 1000 lines.
 """
 
 import os

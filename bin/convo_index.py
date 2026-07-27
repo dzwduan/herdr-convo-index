@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only conversation index for the Claude Code pane that currently has focus.
+"""Read-only conversation index for the Claude Code or Codex pane in focus.
 
-Herdr exposes each pane's Claude session id through its socket API; Claude Code
-stores every turn in ~/.claude/projects/<slug>/<session-id>.jsonl. This pane
-joins the two and renders one line per real user turn, so scrolled-off turns
-stay reachable without touching the agent pane's scrollback.
+Herdr exposes each pane's agent session id through its socket API. This pane
+resolves the matching local transcript and renders one line per real user turn,
+so scrolled-off turns stay reachable without touching the agent pane's
+scrollback.
 
 Clicking a turn (or pressing enter) opens it in full in a session-modal popup.
 The agent pane itself is never scrolled: the herdr socket API reports scroll
@@ -61,7 +61,7 @@ def pane_list():
 
 
 def focused_agent_pane():
-    """Focused pane that owns a Claude session, or None while focus is elsewhere."""
+    """Focused pane with a supported session, or None while focus is elsewhere."""
     result = pane_list()
     if not result:
         return None
@@ -73,12 +73,15 @@ def focused_agent_pane():
         if SELF_WORKSPACE and pane.get("workspace_id") != SELF_WORKSPACE:
             return None  # focus moved to another space; keep showing this one
         session = pane.get("agent_session") or {}
-        if session.get("kind") != "id" or not session.get("value"):
+        agent = tx.agent_kind(pane.get("agent") or session.get("agent"))
+        if agent is None:
+            return None
+        if session.get("kind") not in ("id", "path") or not session.get("value"):
             return None
         return {
             "pane_id": pane.get("pane_id", ""),
             "session_id": session["value"],
-            "agent": pane.get("agent") or session.get("agent") or "agent",
+            "agent": agent,
             "cwd": pane.get("cwd") or "",
             "title": pane.get("terminal_title_stripped") or pane.get("tab_id") or "",
             "workspace": pane.get("workspace_id") or "",
@@ -197,7 +200,7 @@ def render(term, view, target, index, streaming):
     if target:
         head = f"{target['agent']} · {target['title']}" if target["title"] else target["agent"]
     else:
-        head = "waiting for a Claude pane…"
+        head = "waiting for a Claude or Codex pane…"
     lines = [f"{tui.ACCENT}{tui.BOLD}{tx.pad(tx.fit(head, cols), cols)}{tui.RESET}"]
 
     width_no = len(str(max(1, index.count if index else 1)))
@@ -213,7 +216,7 @@ def render(term, view, target, index, streaming):
     elif index and index.error:
         status = f"error: {index.error}"
     elif not target:
-        status = "focus a Claude pane"
+        status = "focus a Claude or Codex pane"
     elif index is None:
         status = "session file not found"
     elif view.query:
@@ -319,9 +322,11 @@ def main():
         nonlocal target, index
         if not found:
             return
-        if target is None or found["session_id"] != target["session_id"]:
+        if (target is None
+                or found["session_id"] != target["session_id"]
+                or found["agent"] != target["agent"]):
             target = found
-            path = tx.session_path(found["session_id"], found["cwd"])
+            path = tx.session_path(found["session_id"], found["cwd"], agent=found["agent"])
             index = tx.SessionIndex(path) if path else None
             view.top = view.cursor = 0
             view.follow = True
@@ -330,7 +335,7 @@ def main():
             return
         target = found
         if index is None:  # session file may appear only after the first turn
-            path = tx.session_path(found["session_id"], found["cwd"])
+            path = tx.session_path(found["session_id"], found["cwd"], agent=found["agent"])
             index = tx.SessionIndex(path) if path else None
 
     with tui.Term() as term:

@@ -1,18 +1,24 @@
 """Shared transcript parsing and terminal text metrics.
 
-Claude Code appends one JSON record per line to
-~/.claude/projects/<cwd-slug>/<session-id>.jsonl. Only a subset of the records
-with role "user" are turns a human actually typed; the rest are tool results,
-subagent traffic, slash-command envelopes and injected reminders.
+Claude Code and Codex both append JSON records to local session files, but use
+different directories and envelopes. This module normalizes the records that
+matter to the index: human prompts, visible assistant text, and compaction
+boundaries. Tool traffic and injected context stay out of the rendered turns.
 """
 
 import json
+import os
 import re
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
-PROJECTS_ROOT = Path.home() / ".claude" / "projects"
+CLAUDE_PROJECTS_ROOT = Path.home() / ".claude" / "projects"
+CODEX_HOME = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+CODEX_SESSIONS_ROOT = CODEX_HOME / "sessions"
+
+# Kept for callers that imported the old name before Codex support was added.
+PROJECTS_ROOT = CLAUDE_PROJECTS_ROOT
 
 # Envelope tags Claude Code writes into the user role that are not user turns.
 NOISE_PREFIXES = (
@@ -116,8 +122,30 @@ def clean(text):
     return ANSI_RE.sub("", text)
 
 
+def agent_kind(agent):
+    """Normalize a Herdr agent label to a supported transcript provider."""
+    name = (agent or "").strip().lower()
+    if name == "claude" or name.startswith(("claude-", "claude ")):
+        return "claude"
+    if name == "codex" or name.startswith(("codex-", "codex ")):
+        return "codex"
+    return None
+
+
+def _codex_event(record, event_type):
+    payload = record.get("payload") or {}
+    return record.get("type") == "event_msg" and payload.get("type") == event_type
+
+
 def user_text(record):
     """Full text of a human-typed turn, or None for any other record."""
+    if _codex_event(record, "user_message"):
+        text = (record.get("payload") or {}).get("message")
+        if not isinstance(text, str):
+            return None
+        text = clean(text).strip()
+        return text or None
+
     if record.get("type") != "user":
         return None
     if record.get("isMeta") or record.get("isSidechain"):
@@ -165,11 +193,13 @@ def raw_user_text(record):
 
 
 def compaction_break(record):
-    """True for the continuation notice Claude Code writes after a compaction.
+    """True for a provider's explicit context-compaction boundary.
 
     It is not a user turn, but it marks where the context was cut, which is the
     most useful landmark a long session has.
     """
+    if _codex_event(record, "context_compacted"):
+        return True
     return raw_user_text(record).lower().startswith(COMPACTION_PREFIX)
 
 
@@ -191,6 +221,12 @@ def assistant_blocks(record):
     Tool blocks are parsed but not in RENDERED_KINDS: a transcript of tool
     names carries no meaning once the reply itself is in front of you.
     """
+    if _codex_event(record, "agent_message"):
+        text = (record.get("payload") or {}).get("message")
+        if not isinstance(text, str) or not text.strip():
+            return []
+        return [("text", clean(text).strip())]
+
     if record.get("type") != "assistant" or record.get("isSidechain"):
         return []
     content = (record.get("message") or {}).get("content")
@@ -247,8 +283,15 @@ def local_hhmm(stamp):
 # --- session files ----------------------------------------------------------
 
 
-def session_path(session_id, cwd, root=None):
-    root = root or PROJECTS_ROOT
+def _direct_session_path(session_id):
+    """Return a path-valued Herdr session directly when one was reported."""
+    if not session_id:
+        return None
+    candidate = Path(str(session_id)).expanduser()
+    return candidate if candidate.is_file() else None
+
+
+def _claude_session_path(session_id, cwd, root):
     if cwd:
         direct = root / re.sub(r"[^A-Za-z0-9]", "-", cwd) / f"{session_id}.jsonl"
         if direct.exists():
@@ -259,6 +302,30 @@ def session_path(session_id, cwd, root=None):
         candidate = project / f"{session_id}.jsonl"
         if candidate.exists():
             return candidate
+    return None
+
+
+def _codex_session_path(session_id, root):
+    if not root.is_dir():
+        return None
+    suffix = f"{session_id}.jsonl"
+    for candidate in root.rglob("*.jsonl"):
+        if candidate.name.endswith(suffix):
+            return candidate
+    return None
+
+
+def session_path(session_id, cwd, root=None, agent="claude"):
+    """Resolve a Herdr session id to its Claude Code or Codex transcript."""
+    direct = _direct_session_path(session_id)
+    if direct is not None:
+        return direct
+
+    kind = agent_kind(agent)
+    if kind == "codex":
+        return _codex_session_path(session_id, Path(root or CODEX_SESSIONS_ROOT))
+    if kind == "claude":
+        return _claude_session_path(session_id, cwd, Path(root or CLAUDE_PROJECTS_ROOT))
     return None
 
 
@@ -374,7 +441,10 @@ class SessionIndex:
             self.entries.append(self._open)
             return True
         if compaction_break(record):
-            self._open = None
+            # Codex may compact while an agent turn is still running. Keep that
+            # turn open so later visible reply text still contributes its size.
+            if not _codex_event(record, "context_compacted"):
+                self._open = None
             self.entries.append({
                 "kind": "break",
                 "ordinal": 0,
