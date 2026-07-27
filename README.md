@@ -61,10 +61,12 @@ herdr plugin action invoke convo.index.toggle
 
 Toggling splits the focused pane to the right and sizes the index to about 34
 columns; set `CONVO_INDEX_WIDTH` to change that. The pane id is remembered per
-space, so toggling again in the same space closes it. There is no folded state
-in between: herdr clamps a split at 10% of its parent, so a pane cannot be
-squeezed down to the narrow rail its own sidebar collapses to. The status line
-carries a `>>` where herdr keeps that control, and it closes the pane.
+space, so toggling again in the same space closes it. The status line carries a
+`>>` where herdr keeps its own sidebar control; it folds the index to a rail of
+ordinals, times and size bars — everything but the prompt text — and `<<` brings
+the width back. herdr clamps a split at 10% of its parent, so that rail is as
+narrow as the window allows and no narrower: it cannot reach the few columns
+herdr's own sidebar folds to, since that sidebar is client chrome, not a pane.
 
 Requirements: herdr >= 0.7.0 with its server running, `python3` on `PATH` (3.8+;
 3.11+ only for the manifest check in the tests), macOS or Linux, and the herdr
@@ -92,7 +94,8 @@ Index pane:
 | `g` / `G` | first / last turn |
 | `/` | filter by prompt text — `enter` keeps the filter, `esc` clears it |
 | `f` | follow the latest turn, or stay put |
-| `q`, click the `>>` on the status line | close the pane |
+| `z`, click the `>>` / `<<` on the status line | fold the pane to a rail, or unfold it |
+| `q` | close the pane |
 
 Turn popup:
 

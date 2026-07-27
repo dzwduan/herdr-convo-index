@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import herdr_api as api  # noqa: E402
+import toggle  # noqa: E402  (its resize helper folds this pane)
 import transcript as tx  # noqa: E402
 import tui  # noqa: E402
 
@@ -40,10 +41,13 @@ WHEEL_LINES = 3
 HEADER_ROWS = 1
 FOOTER_ROWS = 1
 
-# Mirrors herdr's own sidebar control, at the near end of the status line. A
-# split pane cannot be squeezed below 10% of its parent, so the pane closes
-# rather than folding to a rail; the toggle action brings it back.
-CLOSE_GLYPH = ">>"
+# Mirrors herdr's own sidebar control, at the near end of the status line.
+# Folding asks for COLLAPSED_COLS and lands whereever herdr's floor is: a split
+# pane cannot go below 10% of its parent, so the rail is as narrow as the window
+# allows and no narrower.
+COLLAPSE_GLYPH = ">>"
+EXPAND_GLYPH = "<<"
+COLLAPSED_COLS = 3
 
 
 def _own_workspace():
@@ -130,14 +134,16 @@ class View:
         self.query = ""
         self.typing = False
         self.rows_shown = []  # entries currently listed, after filtering
+        self.collapsed = False
+        self.expanded_cols = toggle.DESIRED_COLS
 
     @property
     def body_rows(self):
         return max(1, self.rows - HEADER_ROWS - FOOTER_ROWS)
 
     def hits_button(self, col, row):
-        """The `>>` marker at the near end of the status line.""" 
-        return row == self.rows and col <= tx.cell_width(CLOSE_GLYPH)
+        """The fold marker at the near end of the status line, folded or not."""
+        return row == self.rows and col <= tx.cell_width(COLLAPSE_GLYPH)
 
     def apply(self, entries):
         """Recompute the visible rows for the current query."""
@@ -199,6 +205,15 @@ def entry_line(entry, cols, width_no, selected):
     return f"{tui.DIM}{prefix}{tui.RESET}{body}{tail}"
 
 
+def set_collapsed(view, collapsed):
+    """Fold the pane to the narrowest split herdr allows, or back again."""
+    if collapsed:
+        view.expanded_cols = view.cols + 1  # measure() reserves the last column
+    view.collapsed = collapsed
+    if SELF_PANE:
+        toggle.narrow(SELF_PANE, COLLAPSED_COLS if collapsed else view.expanded_cols)
+
+
 def render(term, view, target, index, streaming):
     view.rows, cols = term.measure()
     view.cols = cols
@@ -215,10 +230,12 @@ def render(term, view, target, index, streaming):
     width_no = len(str(max(1, index.count if index else 1)))
     for row in range(view.body_rows):
         i = view.top + row
-        lines.append(
-            entry_line(shown[i], cols, width_no, i == view.cursor)
-            if i < len(shown) else " " * cols
-        )
+        if i >= len(shown):
+            lines.append(" " * cols)
+            continue
+        # Folded, a row keeps everything but the prompt: ordinal, time, size bar.
+        entry = dict(shown[i], summary="") if view.collapsed else shown[i]
+        lines.append(entry_line(entry, cols, width_no, i == view.cursor))
 
     if view.typing:
         status = f"/{view.query}▏"
@@ -235,8 +252,9 @@ def render(term, view, target, index, streaming):
         if not streaming:
             state += " · polling"
         status = f"{index.count} turns · {state} · / q"
-    status_cols = max(0, cols - tx.cell_width(CLOSE_GLYPH) - 1)
-    lines.append(f"{tui.ACCENT}{CLOSE_GLYPH}{tui.RESET} "
+    marker = EXPAND_GLYPH if view.collapsed else COLLAPSE_GLYPH
+    status_cols = max(0, cols - tx.cell_width(marker) - 1)
+    lines.append(f"{tui.ACCENT}{marker}{tui.RESET} "
                  f"{tui.DIM}{tx.pad(tx.fit(status, status_cols), status_cols)}{tui.RESET}")
     term.draw(lines)
 
@@ -254,8 +272,8 @@ def handle(event, view, index, target):
     if event[0] == "mouse":
         _, button, col, row, pressed = event
         if button == 0 and pressed and view.hits_button(col, row):
-            return False  # the `>>` marker closes the pane, like `q`
-        if button == tui.WHEEL_UP:
+            set_collapsed(view, not view.collapsed)
+        elif button == tui.WHEEL_UP:
             view.scroll(-WHEEL_LINES)
         elif button == tui.WHEEL_DOWN:
             view.scroll(WHEEL_LINES)
@@ -314,6 +332,8 @@ def handle(event, view, index, target):
         view.follow = True
     elif key == "f":
         view.follow = not view.follow
+    elif key == "z":
+        set_collapsed(view, not view.collapsed)
     return True
 
 

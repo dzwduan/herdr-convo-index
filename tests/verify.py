@@ -419,17 +419,28 @@ def check_click_mapping():
     check("wheel clamps at the end", view.top == 40 - view.body_rows, view.top)
 
 
-def check_close_marker():
-    print("close marker")
+def check_fold_marker():
+    print("fold marker")
     view = ci.View()
     view.rows, view.cols = 10, 34
     check("the status-line marker hits it", view.hits_button(2, 10))
     check("the status text does not", not view.hits_button(4, 10))
     check("the same column in the body does not", not view.hits_button(2, 5))
-    check("clicking it closes the pane",
-          ci.handle(("mouse", 0, 1, 10, True), view, None, None) is False)
-    check("clicking the status text does not",
-          ci.handle(("mouse", 0, 8, 10, True), view, None, None) is True)
+
+    widths = []
+    saved_narrow, saved_self = toggle.narrow, ci.SELF_PANE
+    try:
+        toggle.narrow = lambda pane_id, cols: widths.append(cols)
+        ci.SELF_PANE = "w1:p1"
+        ci.handle(("mouse", 0, 1, 10, True), view, None, None)
+        check("clicking the marker folds the pane",
+              view.collapsed and widths == [ci.COLLAPSED_COLS], widths)
+        check("a folded row still addresses its turn", view.row_to_index(5) == 3)
+        ci.handle(("key", "z"), view, None, None)
+        check("z unfolds to the width it had",
+              not view.collapsed and widths[-1] == 35, widths)
+    finally:
+        toggle.narrow, ci.SELF_PANE = saved_narrow, saved_self
 
 
 def check_filtering():
@@ -618,7 +629,7 @@ def main():
                  check_size_bar, check_tailing, check_codex_tailing, check_load_turn,
                  check_focus_scoping, check_session_path,
                  check_text_metrics, check_input_parsing, check_click_mapping,
-                 check_close_marker, check_filtering, check_typing_mode, check_turn_rendering,
+                 check_fold_marker, check_filtering, check_typing_mode, check_turn_rendering,
                  check_markdown, check_socket_client, check_state_dir):
         step()
     print()

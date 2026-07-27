@@ -73,13 +73,13 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(state))
 
 
-def narrow(pane_id):
-    """Shrink the index split toward DESIRED_COLS.
+def narrow(pane_id, cols=DESIRED_COLS):
+    """Resize the index split toward `cols` columns.
 
     `pane resize` moves the shared boundary by a ratio of the parent split, so
-    the target ratio is approached iteratively instead of resolving which split
-    node owns the pane. herdr clamps a split at 10% of its parent, so a narrow
-    enough window floors the pane above DESIRED_COLS.
+    the target is approached iteratively instead of resolving which split node
+    owns the pane. herdr clamps a split at 10% of its parent, so asking for
+    less than that simply lands on the floor.
     """
     for _ in range(4):
         layout = (herdr("pane", "layout", "--pane", pane_id) or {}).get("layout")
@@ -92,7 +92,7 @@ def narrow(pane_id):
         )
         if not rect or total <= 0:
             return
-        delta = rect.get("width", 0) - DESIRED_COLS
+        delta = rect.get("width", 0) - cols
         if abs(delta) <= 2:
             return
         amount = round(abs(delta) / total, 4)
