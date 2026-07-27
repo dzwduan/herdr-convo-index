@@ -1,72 +1,39 @@
 # herdr conversation index
 
-A herdr plugin that docks a narrow turn index next to a Claude Code pane. Turns
-that scrolled out of the pane stay listed, and clicking one opens its full text
-in a popup — so a long session stays navigable without touching the agent pane's
-scrollback.
+A [herdr](https://herdr.dev) plugin that keeps a Claude Code session navigable.
+
+A long agent session scrolls its own history away: the pane shows the current
+turn, and everything before it is somewhere up in the scrollback. This plugin
+docks a narrow index beside the pane listing every turn you asked, and opens any
+one of them — prompt and reply, in full — in a popup.
 
 ```
-┌─────────────────────────────┬──────────────────────────────┐
-│ claude pane                 │ claude · 讲解L2 prefetch…    │
-│                             │  1 11:13 ▃ 阅读专利分析，以… │
-│ (current turn only)         │  2 11:36 ▆ 我理解是先prefe…  │
-│                             │  3 11:40 ▂ 这里是我对pref…   │
-│                             │ ──── compacted 12:20 ──────  │
-│                             │  4 12:43 ▇ 这个问题是什么？… │
-│                             │ 12 turns · follow · / q      │
-└─────────────────────────────┴──────────────────────────────┘
-                                        │ click
+┌──────────────────────────────┬────────────────────────────────┐
+│ claude                       │ claude · 讲解 L2 prefetch…     │
+│                              │  1 11:13 ▃ 讲解 L2 prefetch…   │
+│ (only the current turn is    │  2 11:36 ▆ 我理解是先 prefe…   │
+│  still on screen)            │  3 11:40 ▂ 这里是我对 pref…    │
+│                              │ ──── compacted 12:20 ────      │
+│                              │  4 12:43 ▇ 这个改动的风险在…   │
+│                              │ 12 turns · follow · / q        │
+└──────────────────────────────┴────────────────────────────────┘
+                                        │ click, or press enter
                                         ▼
-        ┌──────────────────────────────────────────────┐
-        │ #3 · 11:40 · 讲解L2 prefetch…                │
-        │ ❯ 这里是我对prefetch的理解…                  │
-        │                                              │
-        │ ● 你的理解基本对，两处需要修正…              │
-        │ 1-42/318 · j/k g/G scroll · n/p turn · q     │
-        └──────────────────────────────────────────────┘
+        ┌────────────────────────────────────────────────┐
+        │ #3 · 11:40 · 讲解 L2 prefetch…                 │
+        │ ❯ 这里是我对 prefetch 的理解…                  │
+        │                                                │
+        │ ● 你的理解基本对，两处需要修正…                │
+        │                                                │
+        │   区别                                         │
+        │   ────────────────────────────────────────     │
+        │   触发方  │ 粒度                               │
+        │   ────────┼────────────────────────────────    │
+        │   硬件    │ cache line                         │
+        │                                                │
+        │ 1-42/318 · j/k g/G scroll · n/p turn · q       │
+        └────────────────────────────────────────────────┘
 ```
-
-## How it works
-
-`pane.list` reports each pane's Claude session id and cwd. Claude Code writes
-every turn to `~/.claude/projects/<cwd-slug>/<session-id>.jsonl`. The index pane
-joins the two, tails the transcript incrementally, and renders one line per real
-user turn: `NN HH:MM ▅ summary`.
-
-The block glyph is a rough size bar for that turn's reply, counted over exactly
-the text the popup shows, so a long explanation is distinguishable from a
-one-line answer at a glance. Compaction boundaries are
-kept and drawn as `──── compacted HH:MM ────` rules; they do not consume turn
-numbers, so ordinals stay stable across them.
-
-The index follows focus **within its own space**: focusing another Claude pane
-in the same space retargets it; focusing a different space leaves it unchanged,
-so each space keeps a stable index.
-
-Retargeting is driven by a persistent `events.subscribe` stream on the herdr
-socket (`pane.focused`, `pane.agent_detected`, `pane.closed`), so focus changes
-land immediately and an idle index pane does no periodic work. If the socket is
-unavailable the pane falls back to polling `pane.list` every 1.2 s and says
-`polling` in its status line.
-
-Clicking a turn (or pressing `enter`) opens a session-modal popup at 80%×80%
-that renders that turn's full prompt plus the reply that followed it, read
-straight from the transcript. That path has no length limit — `pane.read` caps
-out near 1000 lines of scrollback, the JSONL does not.
-
-The reply is markdown, so the popup renders it as markdown rather than showing
-the source: headings, emphasis, code spans, fenced blocks, lists, quotes, rules
-and pipe tables. Wrapping is done on styled characters, so escape codes never
-count toward the width, wide glyphs never straddle the right edge, latin words
-are kept whole while CJK breaks between glyphs, and closing punctuation never
-opens a line.
-
-## Requirements
-
-- herdr >= 0.7.0 with its server running
-- Python 3.8+ on `PATH` as `python3` (3.11+ for the manifest check in the tests)
-- Claude Code writing transcripts under `~/.claude/projects/`
-- macOS or Linux
 
 ## Install
 
@@ -74,14 +41,7 @@ opens a line.
 herdr plugin install dzwduan/herdr-convo-index
 ```
 
-Or, to work on it locally:
-
-```sh
-git clone https://github.com/dzwduan/herdr-convo-index
-herdr plugin link ./herdr-convo-index
-```
-
-Bind a key in `~/.config/herdr/config.toml`, then `herdr server reload-config`:
+Bind a key in `~/.config/herdr/config.toml`, then run `herdr server reload-config`:
 
 ```toml
 [[keys.command]]
@@ -91,81 +51,123 @@ command = "convo.index.toggle"
 description = "toggle conversation index"
 ```
 
-Or invoke it directly:
+`prefix` is `ctrl+b` unless you have changed it. Without a keybinding, the same
+action runs from a shell:
 
 ```sh
 herdr plugin action invoke convo.index.toggle
 ```
 
-The action splits the focused pane to the right, sizes the index to ~34 columns
-(`CONVO_INDEX_WIDTH` overrides), and records the pane id per space in
-`$HERDR_PLUGIN_STATE_DIR/panes.json`. Invoking it again in the same space closes
-that pane.
+Toggling splits the focused pane to the right and sizes the index to about 34
+columns; set `CONVO_INDEX_WIDTH` to change that. The pane id is remembered per
+space, so toggling again in the same space closes it.
 
-## Keys
+Requirements: herdr >= 0.7.0 with its server running, `python3` on `PATH` (3.8+;
+3.11+ only for the manifest check in the tests), Claude Code writing transcripts
+under `~/.claude/projects/`, macOS or Linux. No third-party Python packages.
+
+## Using it
 
 Index pane:
 
 | key | action |
 | --- | --- |
 | left click | select that turn and open it |
-| wheel | scroll the list |
 | `enter` | open the selected turn |
-| `/` | filter by prompt text; `enter` keeps it, `esc` clears |
-| `j` / `k`, arrows | move selection |
-| `PgUp` / `PgDn`, `ctrl+b` / `ctrl+f` | page |
+| `j` / `k`, `↑` / `↓` | move the selection |
+| wheel, `PgUp` / `PgDn`, `ctrl+b` / `ctrl+f` | scroll |
 | `g` / `G` | first / last turn |
-| `f` | toggle follow-latest |
+| `/` | filter by prompt text — `enter` keeps the filter, `esc` clears it |
+| `f` | follow the latest turn, or stay put |
 | `q` | close the pane |
 
 Turn popup:
 
 | key | action |
 | --- | --- |
-| wheel, `j` / `k`, `↑` / `↓` | scroll |
+| `n` / `p`, `→` / `←`, `enter` | next / previous turn, without closing |
+| `j` / `k`, `↑` / `↓`, wheel | scroll |
 | `PgUp` / `PgDn`, `space`, `ctrl+b` / `ctrl+f` | page |
 | `g` / `G` | top / bottom |
-| `n` / `p`, `→` / `←`, `enter` | previous / next turn, without closing |
 | `q`, `esc` | close |
 
-## Boundaries
+Each index row is `NN HH:MM ▅ prompt`. The block glyph is a size bar for the
+reply that followed, counted over exactly the text the popup will show, so a
+long explanation is distinguishable from a one-line answer before you open it.
+Compaction boundaries are drawn as `──── compacted HH:MM ────` rules; they do
+not consume turn numbers, so ordinals stay stable across them.
 
-- **The agent pane is never scrolled.** Opening a turn shows it in a popup; it
-  does not move the agent pane's viewport. The herdr socket API exposes scroll
-  position (`pane.scroll_changed`) but has no command to set it, and page keys
-  injected through `pane.send-keys` are not treated as scrollback keys.
-- Filtered out of the index: tool results, subagent (`isSidechain`) turns, slash
-  commands and their output, task notifications, injected system reminders and
-  interrupt markers. Compaction notices are kept, but as rules rather than turns.
-- The size bar is an order-of-magnitude hint, not a measurement: it counts
-  rendered characters only, so a turn that did heavy tool work and said little
-  scores low.
-- `/` filters on the prompt line only, not on reply bodies.
-- Only panes herdr has detected as Claude with a session id are indexed. Other
-  agents report sessions differently and are skipped.
-- The popup renders the prompt (`❯`), the reply prose (`●`) and thinking (`✻`).
-  Tool calls are dropped entirely — names, inputs and results alike — since a
-  list of tool names says nothing once the reply itself is in front of you. A
-  turn that was only tool calls therefore shows just its prompt.
-- Markdown support is deliberately partial: source line breaks are kept rather
-  than reflowed into paragraphs, link text is shown but its URL is dropped,
-  nested block structures (a list inside a quote, a table inside a list) are not
-  modelled, and thinking blocks stay plain dim prose. Table columns shrink
+## How it works
+
+`pane.list` reports each pane's Claude session id and working directory. Claude
+Code writes every turn to `~/.claude/projects/<cwd-slug>/<session-id>.jsonl`.
+The index joins the two and tails that file incrementally.
+
+Focus is tracked over a persistent `events.subscribe` connection to the herdr
+socket (`pane.focused`, `pane.agent_detected`, `pane.closed`), so retargeting is
+immediate and an idle index does no periodic work at all. If the socket is
+unavailable it falls back to polling `pane.list` and says `polling` in its
+status line rather than going quiet. The index follows focus **within its own
+space** only, so each space keeps a stable index.
+
+Opening a turn reads the transcript, not the pane scrollback — which is what
+makes arbitrarily old turns reachable, since `pane.read` caps out near 1000
+lines. Replies are markdown, so the popup renders them as markdown: headings,
+emphasis, code spans, fenced blocks, lists, quotes, rules and pipe tables.
+Wrapping runs over styled characters rather than a finished string, so escape
+codes never count toward the width, wide glyphs never straddle the right edge,
+latin words are kept whole while CJK breaks between glyphs, and closing
+punctuation never opens a line.
+
+## What it deliberately does not do
+
+- **It never scrolls the agent pane.** Opening a turn shows it in a popup and
+  leaves the pane's viewport alone. The socket API reports scroll position
+  (`pane.scroll_changed`) but exposes no command to set it, and page keys sent
+  through `pane.send-keys` are not treated as scrollback keys.
+- **Tool calls are not shown** — names, inputs and results alike. A list of tool
+  names says nothing once the reply itself is in front of you. A turn that was
+  only tool calls therefore shows just its prompt.
+- **Noise is filtered out of the index**: tool results, subagent (`isSidechain`)
+  turns, slash commands and their output, task notifications, injected system
+  reminders, interrupt markers. Compaction notices are kept, as rules.
+- **The size bar is an order-of-magnitude hint**, not a measurement. A turn that
+  did heavy tool work and said little scores low.
+- **Markdown support is partial**: source line breaks are kept rather than
+  reflowed into paragraphs, link text is shown but its URL is dropped, nested
+  block structures (a list inside a quote, a table inside a list) are not
+  modelled, and thinking blocks stay plain prose. Table columns shrink
   proportionally and cells wrap inside their column, so no cell text is lost.
-- The index itself cannot run as a popup: popups get no `HERDR_PANE_ID`, so it
-  could not exclude itself when computing which pane has focus.
-- Mouse input depends on herdr forwarding mouse events to the pane app. The
-  plugin requests SGR tracking (`?1000h`/`?1006h`); keyboard keys cover every
-  action if a terminal swallows the mouse.
+- **`/` filters prompts only**, not reply bodies.
+- **Only Claude panes are indexed** — panes herdr has detected with a session id.
+  Other agents report sessions differently and are skipped.
+- **The index cannot run as a popup.** Popups receive no `HERDR_PANE_ID`, so it
+  could not exclude itself when working out which pane has focus.
+- **Mouse support depends on herdr forwarding mouse events.** The plugin requests
+  SGR tracking (`?1000h` / `?1006h`); every action also has a key, so a terminal
+  that swallows the mouse costs nothing.
 
-## Verify
+## Development
+
+```sh
+git clone https://github.com/dzwduan/herdr-convo-index
+herdr plugin link ./herdr-convo-index
+```
 
 ```sh
 python3 tests/verify.py    # exit 0 = all checks passed
 ```
 
-Runs against `tests/fixture.jsonl` and stubbed API responses; no herdr server or
-real transcript needed.
+The checks run against `tests/fixture.jsonl` and stubbed socket responses — no
+herdr server and no real transcript needed. They cover the manifest, turn
+extraction, incremental tailing, full-turn loading, focus scoping, session-file
+resolution, text metrics, input parsing, click mapping, filtering, and markdown
+rendering.
+
+Layout: `bin/transcript.py` parses the JSONL and measures text, `bin/tui.py` is
+the terminal and input layer, `bin/herdr_api.py` speaks the socket protocol,
+`bin/markdown.py` renders markdown to ANSI, `bin/convo_index.py` is the index
+pane, `bin/turn_view.py` is the popup, and `bin/toggle.py` is the action.
 
 ## License
 
