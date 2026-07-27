@@ -419,6 +419,30 @@ def check_click_mapping():
     check("wheel clamps at the end", view.top == 40 - view.body_rows, view.top)
 
 
+def check_collapse():
+    print("collapse button")
+    view = ci.View()
+    view.rows, view.cols = 10, 34
+    check("header chevron hits the button", view.hits_button(34, 1))
+    check("the title does not", not view.hits_button(4, 1))
+    check("a body row does not", not view.hits_button(34, 5))
+
+    widths = []
+    saved_narrow, saved_self = toggle.narrow, ci.SELF_PANE
+    try:
+        toggle.narrow = lambda pane_id, cols: widths.append(cols)
+        ci.SELF_PANE = "w1:p1"
+        ci.handle(("key", "z"), view, None, None)
+        check("z folds the pane to a strip",
+              view.collapsed and widths == [ci.COLLAPSED_COLS], widths)
+        check("the whole strip is the button", view.hits_button(1, 5))
+        ci.handle(("mouse", 0, 1, 5, True), view, None, None)
+        check("clicking it restores the previous width",
+              not view.collapsed and widths[-1] == 35, widths)
+    finally:
+        toggle.narrow, ci.SELF_PANE = saved_narrow, saved_self
+
+
 def check_filtering():
     print("filtering")
     entries = [
@@ -605,7 +629,7 @@ def main():
                  check_size_bar, check_tailing, check_codex_tailing, check_load_turn,
                  check_focus_scoping, check_session_path,
                  check_text_metrics, check_input_parsing, check_click_mapping,
-                 check_filtering, check_typing_mode, check_turn_rendering,
+                 check_collapse, check_filtering, check_typing_mode, check_turn_rendering,
                  check_markdown, check_socket_client, check_state_dir):
         step()
     print()

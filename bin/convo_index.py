@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import herdr_api as api  # noqa: E402
+import toggle  # noqa: E402  (reuses its pane-resize helper for collapsing)
 import transcript as tx  # noqa: E402
 import tui  # noqa: E402
 
@@ -39,6 +40,10 @@ WHEEL_LINES = 3
 
 HEADER_ROWS = 1
 FOOTER_ROWS = 1
+
+COLLAPSE_GLYPH = "›"  # header button: click to collapse
+EXPAND_GLYPH = "‹"  # the collapsed strip itself: click to expand
+COLLAPSED_COLS = 4
 
 
 def _own_workspace():
@@ -125,10 +130,16 @@ class View:
         self.query = ""
         self.typing = False
         self.rows_shown = []  # entries currently listed, after filtering
+        self.collapsed = False
+        self.expanded_cols = toggle.DESIRED_COLS
 
     @property
     def body_rows(self):
         return max(1, self.rows - HEADER_ROWS - FOOTER_ROWS)
+
+    def hits_button(self, col, row):
+        """The header chevron — or anywhere at all once the pane is a strip."""
+        return self.collapsed or (row == 1 and col >= self.cols)
 
     def apply(self, entries):
         """Recompute the visible rows for the current query."""
@@ -190,9 +201,23 @@ def entry_line(entry, cols, width_no, selected):
     return f"{tui.DIM}{prefix}{tui.RESET}{body}{tail}"
 
 
+def set_collapsed(view, collapsed):
+    """Fold the pane down to a chevron strip, or back to the width it had."""
+    if collapsed:
+        view.expanded_cols = view.cols + 1  # measure() reserves the last column
+    view.collapsed = collapsed
+    if SELF_PANE:
+        toggle.narrow(SELF_PANE, COLLAPSED_COLS if collapsed else view.expanded_cols)
+
+
 def render(term, view, target, index, streaming):
     view.rows, cols = term.measure()
     view.cols = cols
+    if view.collapsed:
+        strip = f"{EXPAND_GLYPH}{index.count if index else 0}"
+        term.draw([f"{tui.ACCENT}{tui.BOLD}{tx.fit(strip, cols)}{tui.RESET}"]
+                  + [""] * (view.rows - 1))
+        return
     entries = index.entries if index else []
     shown = view.apply(entries)
     view.clamp()
@@ -201,7 +226,11 @@ def render(term, view, target, index, streaming):
         head = f"{target['agent']} · {target['title']}" if target["title"] else target["agent"]
     else:
         head = "waiting for a Claude or Codex pane…"
-    lines = [f"{tui.ACCENT}{tui.BOLD}{tx.pad(tx.fit(head, cols), cols)}{tui.RESET}"]
+    head_cols = max(0, cols - tx.cell_width(COLLAPSE_GLYPH))
+    lines = [
+        f"{tui.ACCENT}{tui.BOLD}{tx.pad(tx.fit(head, head_cols), head_cols)}"
+        f"{COLLAPSE_GLYPH}{tui.RESET}"
+    ]
 
     width_no = len(str(max(1, index.count if index else 1)))
     for row in range(view.body_rows):
@@ -241,8 +270,10 @@ def handle(event, view, index, target):
             open_turn_popup(index.path, entry["ordinal"], (target or {}).get("title", ""))
 
     if event[0] == "mouse":
-        _, button, _col, row, pressed = event
-        if button == tui.WHEEL_UP:
+        _, button, col, row, pressed = event
+        if button == 0 and pressed and view.hits_button(col, row):
+            set_collapsed(view, not view.collapsed)
+        elif button == tui.WHEEL_UP:
             view.scroll(-WHEEL_LINES)
         elif button == tui.WHEEL_DOWN:
             view.scroll(WHEEL_LINES)
@@ -301,6 +332,8 @@ def handle(event, view, index, target):
         view.follow = True
     elif key == "f":
         view.follow = not view.follow
+    elif key == "z":
+        set_collapsed(view, not view.collapsed)
     return True
 
 

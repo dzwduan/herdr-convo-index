@@ -73,8 +73,8 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(state))
 
 
-def narrow(pane_id):
-    """Shrink the index split toward DESIRED_COLS.
+def narrow(pane_id, cols=DESIRED_COLS):
+    """Resize the index split toward `cols` columns.
 
     `pane resize` moves the shared boundary by a ratio of the parent split, so
     the target ratio is approached iteratively instead of resolving which split
@@ -91,7 +91,7 @@ def narrow(pane_id):
         )
         if not rect or total <= 0:
             return
-        delta = rect.get("width", 0) - DESIRED_COLS
+        delta = rect.get("width", 0) - cols
         if abs(delta) <= 2:
             return
         amount = round(abs(delta) / total, 4)
