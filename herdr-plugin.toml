@@ -1,0 +1,26 @@
+id = "convo.index"
+name = "Conversation Index"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Turn index for the focused Claude Code pane, docked as a side pane; click a turn to read it in full."
+platforms = ["macos", "linux"]
+
+[[panes]]
+id = "index"
+title = "Conversation Index"
+placement = "split"
+command = ["python3", "bin/convo_index.py"]
+
+[[panes]]
+id = "turn"
+title = "Conversation Turn"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["python3", "bin/turn_view.py"]
+
+[[actions]]
+id = "toggle"
+title = "Toggle conversation index"
+contexts = ["pane"]
+command = ["python3", "bin/toggle.py"]
