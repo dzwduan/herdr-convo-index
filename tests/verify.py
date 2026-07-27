@@ -26,6 +26,7 @@ import convo_index as ci  # noqa: E402
 import turn_view as tv  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixture.jsonl"
+MANIFEST_PLACEMENTS = ("overlay", "split", "tab", "zoomed")
 FAILURES = []
 
 
@@ -51,14 +52,44 @@ def check_manifest():
     actions = {a["id"]: a for a in data.get("actions", [])}
     check("declares index pane", "index" in panes)
     check("declares turn pane", "turn" in panes)
-    check("turn pane is a popup", panes.get("turn", {}).get("placement") == "popup")
-    check("turn popup is sized",
-          panes.get("turn", {}).get("width") == "80%"
-          and panes.get("turn", {}).get("height") == "80%")
+    # herdr 0.7.x accepts "popup" for plugin.pane.open but not in the manifest,
+    # and rejects the whole file on install if it appears here.
+    check("manifest placements are installable",
+          all(p.get("placement", "overlay") in MANIFEST_PLACEMENTS
+              for p in panes.values()),
+          [p.get("placement") for p in panes.values()])
     check("declares toggle action", "toggle" in actions)
     for entry in list(panes.values()) + list(actions.values()):
         script = ROOT / entry["command"][-1]
         check(f"{entry['id']} command exists", script.exists(), str(script))
+
+
+def check_popup_launch():
+    print("popup launch")
+    captured = []
+
+    class FakePopen:
+        def __init__(self, argv, **_):
+            captured.append(argv)
+
+    saved = ci.subprocess.Popen
+    try:
+        ci.subprocess.Popen = FakePopen
+        ci.open_turn_popup("/tmp/s.jsonl", 7, "session")
+    finally:
+        ci.subprocess.Popen = saved
+
+    argv = captured[0] if captured else []
+    def flag(name):
+        return argv[argv.index(name) + 1] if name in argv else None
+
+    check("the turn view is launched", bool(argv), argv)
+    check("opened as a popup", flag("--placement") == "popup", argv)
+    check("popup is sized at open time",
+          flag("--width") == "80%" and flag("--height") == "80%", argv)
+    check("entrypoint matches the manifest", flag("--entrypoint") == "turn", argv)
+    check("transcript and ordinal are passed",
+          "CONVO_TURN_FILE=/tmp/s.jsonl" in argv and "CONVO_TURN_INDEX=7" in argv, argv)
 
 
 def check_extraction():
@@ -453,7 +484,7 @@ def check_socket_client():
 
 
 def main():
-    for step in (check_manifest, check_extraction, check_size_bar, check_tailing,
+    for step in (check_manifest, check_popup_launch, check_extraction, check_size_bar, check_tailing,
                  check_load_turn, check_focus_scoping, check_session_path,
                  check_text_metrics, check_input_parsing, check_click_mapping,
                  check_filtering, check_typing_mode, check_turn_rendering,

@@ -11,12 +11,13 @@ title = "Conversation Index"
 placement = "split"
 command = ["python3", "bin/convo_index.py"]
 
+# Placement is set when the pane is opened rather than declared here: the
+# manifest parser in herdr 0.7.x rejects "popup" as a manifest-level placement,
+# while plugin.pane.open accepts it. The index always opens this entrypoint as
+# an 80%x80% popup.
 [[panes]]
 id = "turn"
 title = "Conversation Turn"
-placement = "popup"
-width = "80%"
-height = "80%"
 command = ["python3", "bin/turn_view.py"]
 
 [[actions]]
