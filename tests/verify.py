@@ -8,6 +8,7 @@ text metrics, input parsing, click-row mapping, and markdown rendering.
 No herdr server or real agent transcripts are required.
 """
 
+import importlib
 import json
 import os
 import sys
@@ -18,12 +19,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "bin"))
 
 os.environ.setdefault("HERDR_PLUGIN_CONTEXT_JSON", "{}")
+os.environ.pop("HERDR_PLUGIN_STATE_DIR", None)  # exercise toggle's fallback path
 import herdr_api as api  # noqa: E402
 import markdown as md  # noqa: E402
 import transcript as tx  # noqa: E402
 import tui  # noqa: E402
 import convo_index as ci  # noqa: E402
 import turn_view as tv  # noqa: E402
+import toggle  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixture.jsonl"
 CODEX_FIXTURE = ROOT / "tests" / "codex_fixture.jsonl"
@@ -582,13 +585,28 @@ def check_socket_client():
         api.SOCKET_PATH = saved
 
 
+def check_state_dir():
+    print("toggle state dir")
+    check("fallback matches herdr's plugin state layout",
+          toggle.STATE_DIR == Path.home() / ".local/state/herdr/plugins" / toggle.PLUGIN_ID,
+          str(toggle.STATE_DIR))
+    os.environ["HERDR_PLUGIN_STATE_DIR"] = "/tmp/convo-index-state"
+    try:
+        reloaded = importlib.reload(toggle)
+        check("herdr-provided dir wins",
+              reloaded.STATE_DIR == Path("/tmp/convo-index-state"), str(reloaded.STATE_DIR))
+    finally:
+        os.environ.pop("HERDR_PLUGIN_STATE_DIR", None)
+        importlib.reload(toggle)
+
+
 def main():
     for step in (check_manifest, check_popup_launch, check_extraction, check_codex_extraction,
                  check_size_bar, check_tailing, check_codex_tailing, check_load_turn,
                  check_focus_scoping, check_session_path,
                  check_text_metrics, check_input_parsing, check_click_mapping,
                  check_filtering, check_typing_mode, check_turn_rendering,
-                 check_markdown, check_socket_client):
+                 check_markdown, check_socket_client, check_state_dir):
         step()
     print()
     if FAILURES:

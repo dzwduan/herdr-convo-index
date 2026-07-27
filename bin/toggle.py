@@ -14,7 +14,8 @@ from pathlib import Path
 HERDR_BIN = os.environ.get("HERDR_BIN_PATH") or "herdr"
 PLUGIN_ID = os.environ.get("HERDR_PLUGIN_ID") or "convo.index"
 STATE_DIR = Path(
-    os.environ.get("HERDR_PLUGIN_STATE_DIR") or Path.home() / ".local/state/herdr/convo.index"
+    os.environ.get("HERDR_PLUGIN_STATE_DIR")
+    or Path.home() / ".local/state/herdr/plugins" / PLUGIN_ID
 )
 STATE_FILE = STATE_DIR / "panes.json"
 
